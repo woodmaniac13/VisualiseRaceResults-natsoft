@@ -24,8 +24,59 @@
     "#20bf6b", "#eb3b5a", "#8854d0", "#2bcbba"
   ];
 
+  // Dynamic y-axis floor for the active round (fastest race lap minus 3 s buffer)
+  function chartMinTime() {
+    const times = RACE_DATA.drivers
+      .map((d) => parseTime(d.sessions.race1?.bestLap))
+      .filter(Boolean);
+    return times.length ? Math.floor(Math.min(...times)) - 3 : 55;
+  }
+
   // ─── Init ──────────────────────────────────
   function init() {
+    buildRoundSelector();
+    attachResultsEvents();
+    renderAll();
+    attachNavEvents();
+    activatePanel("overview");
+  }
+
+  // Build the round selector dropdown from ALL_ROUNDS
+  function buildRoundSelector() {
+    const sel = document.getElementById("round-selector");
+    if (!sel) return;
+    sel.innerHTML = ALL_ROUNDS.map((r, i) => {
+      const d = new Date(r.event.date);
+      const label = `Round ${r.event.round} — ${r.event.venue.replace("Sydney Motorsport Park — ", "SMSP ")} (${d.toLocaleDateString("en-AU", { day: "numeric", month: "short" })})`;
+      return `<option value="${i}">${label}</option>`;
+    }).join("");
+    sel.value = "0";
+    sel.addEventListener("change", (e) => {
+      RACE_DATA = ALL_ROUNDS[parseInt(e.target.value)];
+      selectedSession = "race1";
+      filterClass = "all";
+      filterSearch = "";
+      reloadData();
+    });
+  }
+
+  // Re-render everything (called when round changes)
+  function reloadData() {
+    // Destroy all existing charts
+    Object.values(charts).forEach((c) => { if (c && c.destroy) c.destroy(); });
+    charts = {};
+    renderAll();
+    // Reset the results session selector to Run 3
+    const sessionSel = document.getElementById("result-session-select");
+    if (sessionSel) sessionSel.value = "race1";
+    const classFilter = document.getElementById("result-class-filter");
+    if (classFilter) classFilter.value = "all";
+    const searchInput = document.getElementById("result-search");
+    if (searchInput) searchInput.value = "";
+    activatePanel(currentPanel);
+  }
+
+  function renderAll() {
     renderEventHero();
     renderOverview();
     renderResults();
@@ -34,8 +85,6 @@
     renderDriverComparison();
     renderGapAnalysis();
     renderDriverProfiles();
-    attachNavEvents();
-    activatePanel("overview");
   }
 
   // ─── Navigation ───────────────────────────
@@ -91,12 +140,14 @@
     document.getElementById("stat-classes").textContent = numClasses;
     document.getElementById("stat-record").textContent = d.records.fastestRaceLap.time;
     document.getElementById("stat-laps").textContent = totalLaps;
+    const badge = document.getElementById("hero-round-badge");
+    if (badge) badge.textContent = "Round " + d.event.round;
   }
 
   // ─── Overview Panel ───────────────────────
   function renderOverview() {
     renderPodium("race1");
-    renderPodium("race2");
+    renderPodium("practice2");
     renderMiniLeaderboard();
     renderRecordCards();
     renderOverviewCharts();
@@ -104,14 +155,17 @@
   }
 
   function renderPodium(session) {
-    const id = `podium-${session}`;
+    // podium-race2 is used for the second podium card in HTML
+    const id = session === "practice2" ? "podium-race2" : `podium-${session}`;
     const el = document.getElementById(id);
     if (!el) return;
 
     const top3 = RACE_DATA.drivers
       .filter((d) => d.sessions[session])
-      .sort((a, b) => a.sessions[session].pos - b.sessions[session].pos)
+      .sort((a, b) => (parseTime(a.sessions[session].bestLap) || 999) - (parseTime(b.sessions[session].bestLap) || 999))
       .slice(0, 3);
+
+    if (top3.length < 3) { el.innerHTML = "<div style='color:var(--text-muted);padding:16px;font-size:13px'>No data</div>"; return; }
 
     const labels = [2, 1, 3];
     const orderedTop3 = [top3[1], top3[0], top3[2]];
@@ -229,8 +283,8 @@
     if (!ctx) return;
     if (charts["session-comparison"]) charts["session-comparison"].destroy();
 
-    const sessions = ["practice1", "practice2", "qualifying", "race1", "race2"];
-    const sessionLabels = ["Practice 1", "Practice 2", "Qualifying", "Race 1", "Race 2"];
+    const sessions = ["practice1", "practice2", "race1"];
+    const sessionLabels = ["Run 1", "Run 2", "Run 3"];
     const top5 = RACE_DATA.drivers.slice(0, 5);
 
     const datasets = top5.map((d, i) => ({
@@ -308,7 +362,8 @@
   }
 
   // ─── Results Table ─────────────────────────
-  function renderResults() {
+  // Event listeners are attached once; renderResults only refreshes the data.
+  function attachResultsEvents() {
     const sessionSelect = document.getElementById("result-session-select");
     if (sessionSelect) {
       sessionSelect.addEventListener("change", (e) => {
@@ -333,10 +388,12 @@
       });
     }
 
-    // Sort headers
+    // Sort headers (clone to remove any stale listeners before re-attaching)
     document.querySelectorAll(".results-table thead th[data-sort]").forEach((th) => {
-      th.addEventListener("click", () => {
-        const col = th.dataset.sort;
+      const fresh = th.cloneNode(true);
+      th.parentNode.replaceChild(fresh, th);
+      fresh.addEventListener("click", () => {
+        const col = fresh.dataset.sort;
         if (sortCol === col) {
           sortDir = sortDir === "asc" ? "desc" : "asc";
         } else {
@@ -346,7 +403,9 @@
         refreshResultsTable();
       });
     });
+  }
 
+  function renderResults() {
     refreshResultsTable();
   }
 
@@ -428,7 +487,6 @@
         const cls = RACE_DATA.classes[d.class];
         const gapInfo = gapMap[d.car];
         const gap = gapInfo?.gap || "—";
-        const isLapDown = gap && gap.includes("LAP");
 
         return `
           <tr onclick="showDriverModal(${d.id})" class="${selectedDriverId === d.id ? "selected" : ""}">
@@ -443,7 +501,7 @@
             <td style="font-family:var(--font-mono)">${d.capacity.toLocaleString()}</td>
             <td style="font-family:var(--font-mono)">${sess.laps}</td>
             <td class="lap-time ${isFastest ? "fastest" : ""}">${sess.bestLap}${isFastest ? ' <span class="badge-fastest">BEST</span>' : ""}</td>
-            ${isRace ? `<td class="gap-time ${isLapDown ? "" : ""}">${isLapDown ? `<span class="badge-lapped">${gap}</span>` : gap}</td>` : ""}
+            ${isRace ? `<td class="gap-time">${gap}</td>` : ""}
           </tr>
         `;
       })
@@ -553,17 +611,22 @@
 
     const top5 = RACE_DATA.drivers.slice(0, 5);
 
-    // Normalise metrics: consistency (lower delta between best/slowest = higher score), speed, laps
+    // Compute reference (fastest driver's best lap in this round)
+    const allBests = RACE_DATA.drivers.map((d) => parseTime(d.sessions.race1?.bestLap)).filter(Boolean);
+    const fastestOverall = Math.min(...allBests);
+
     const datasets = top5.map((d, i) => {
       const r1 = d.sessions.race1;
       const lapTimes = (r1?.lapTimes || []).filter(Boolean).map(parseTime).filter(Boolean);
-      const bestLap = Math.min(...lapTimes);
+      const bestLap  = Math.min(...lapTimes);
       const worstLap = Math.max(...lapTimes);
-      const consistency = Math.max(0, 100 - (worstLap - bestLap) * 100);
-      const speedScore = Math.max(0, 100 - (bestLap - 80) * 2);
-      const lapsScore = (r1?.laps / 14) * 100;
-      const classScore = ["1S3", "2S4", "2R3"].includes(d.class) ? 90 : 70;
-      const avgScore = speedScore * 0.9;
+      // Consistency: how tight the lap time spread is (lower spread = better)
+      const consistency = Math.max(0, 100 - (worstLap - bestLap) * 50);
+      // Speed: how close to the round's fastest lap (0% gap = 100, each 1 s gap = -5)
+      const speedScore  = Math.max(0, 100 - (bestLap - fastestOverall) * 5);
+      const lapsScore   = (r1?.laps / 3) * 100;
+      const classScore  = ["1S3", "2C", "2S4", "1S4"].includes(d.class) ? 90 : 72;
+      const avgScore    = (speedScore + consistency) / 2;
 
       return {
         label: d.name.split(" ")[0],
@@ -612,8 +675,8 @@
     if (!ctx) return;
     if (charts["session-best"]) charts["session-best"].destroy();
 
-    const sessions = ["practice1", "practice2", "qualifying", "race1", "race2"];
-    const sessionLabels = ["P1", "P2", "Q", "R1", "R2"];
+    const sessions = ["practice1", "practice2", "race1"];
+    const sessionLabels = ["R1", "R2", "R3"];
     const top6 = RACE_DATA.drivers.slice(0, 6);
 
     const datasets = top6.map((d, i) => ({
@@ -648,7 +711,7 @@
           y: {
             grid: { color: "#252d3d" },
             ticks: { color: "#8892a4", callback: (v) => formatTime(v) },
-            min: 78
+            min: chartMinTime()
           }
         }
       }
@@ -735,7 +798,7 @@
           x: {
             grid: { color: "#252d3d" },
             ticks: { color: "#8892a4", callback: (v) => formatTime(v) },
-            min: 78
+            min: chartMinTime()
           },
           y: { grid: { color: "#252d3d" }, ticks: { color: "#8892a4" } }
         }
@@ -783,7 +846,7 @@
             grid: { color: "#252d3d" },
             ticks: { color: "#8892a4", callback: (v) => formatTime(v) },
             title: { display: true, text: "Best Lap Time", color: "#8892a4" },
-            min: 78
+            min: chartMinTime()
           }
         }
       }
@@ -804,13 +867,17 @@
     compareDriverA = parseInt(selA.value);
     compareDriverB = parseInt(selB.value);
 
-    const update = () => {
+    // Use onchange to avoid duplicate listeners on reload
+    selA.onchange = () => {
       compareDriverA = parseInt(selA.value);
       compareDriverB = parseInt(selB.value);
       refreshComparison();
     };
-    selA.addEventListener("change", update);
-    selB.addEventListener("change", update);
+    selB.onchange = () => {
+      compareDriverA = parseInt(selA.value);
+      compareDriverB = parseInt(selB.value);
+      refreshComparison();
+    };
     refreshComparison();
   }
 
@@ -857,11 +924,11 @@
     const colorB = RACE_DATA.classes[dB.class]?.color || PALETTE[1];
 
     const stats = [
-      { label: "Best Qual Lap", a: parseTime(dA.sessions.qualifying?.bestLap), b: parseTime(dB.sessions.qualifying?.bestLap), format: formatTime, lowerBetter: true },
-      { label: "Best Race Lap", a: parseTime(dA.sessions.race1?.bestLap), b: parseTime(dB.sessions.race1?.bestLap), format: formatTime, lowerBetter: true },
-      { label: "Race 1 Position", a: dA.sessions.race1?.pos, b: dB.sessions.race1?.pos, format: (v) => "P" + v, lowerBetter: true },
-      { label: "Race 2 Position", a: dA.sessions.race2?.pos, b: dB.sessions.race2?.pos, format: (v) => "P" + v, lowerBetter: true },
-      { label: "Race 1 Laps", a: dA.sessions.race1?.laps, b: dB.sessions.race1?.laps, format: (v) => v + " laps", lowerBetter: false },
+      { label: "Best Run 2 Lap", a: parseTime(dA.sessions.practice2?.bestLap), b: parseTime(dB.sessions.practice2?.bestLap), format: formatTime, lowerBetter: true },
+      { label: "Best Run 3 Lap", a: parseTime(dA.sessions.race1?.bestLap), b: parseTime(dB.sessions.race1?.bestLap), format: formatTime, lowerBetter: true },
+      { label: "Run 3 Position", a: dA.sessions.race1?.pos, b: dB.sessions.race1?.pos, format: (v) => "P" + v, lowerBetter: true },
+      { label: "Run 2 Position", a: dA.sessions.practice2?.pos || dA.overallPos, b: dB.sessions.practice2?.pos || dB.overallPos, format: (v) => "P" + v, lowerBetter: true },
+      { label: "Laps Completed", a: dA.sessions.race1?.laps, b: dB.sessions.race1?.laps, format: (v) => v + " laps", lowerBetter: false },
       { label: "Total Points", a: dA.points, b: dB.points, format: (v) => v + " pts", lowerBetter: false },
       { label: "Engine Capacity", a: dA.capacity, b: dB.capacity, format: (v) => v.toLocaleString() + "cc", lowerBetter: false }
     ];
@@ -966,28 +1033,35 @@
   // ─── Gap Analysis ─────────────────────────
   function renderGapAnalysis() {
     renderGapBars("race1");
-    renderGapBars("race2");
+    renderGapBars("practice2");
     renderGapOverTimeChart();
   }
 
   function renderGapBars(session) {
-    const el = document.getElementById(`gap-bars-${session}`);
+    // Map session key to the HTML element ID
+    const elId = session === "practice2" ? "gap-bars-race2" : `gap-bars-${session}`;
+    const el = document.getElementById(elId);
     if (!el) return;
 
     const gaps = RACE_DATA.race1Gaps;
-    const maxGap = 25;
+
+    // Dynamic max gap based on the actual data
+    const gapTimes = gaps.slice(1).map((g) => {
+      if (!g.gap || g.gap === "---") return 0;
+      return parseTime(g.gap.replace("+", "")) || 0;
+    }).filter((t) => t > 0 && t < 300);
+    const maxGap = gapTimes.length ? Math.max(...gapTimes) * 1.15 : 10;
 
     el.innerHTML = gaps.map((g, i) => {
-      const isLapDown = g.gap.includes("LAP");
       const isLeader = i === 0;
-      const gapSecs = isLeader ? 0 : isLapDown ? maxGap : parseFloat(g.gap.replace("+", "").split(":").reduce((m, s) => parseFloat(m) * 60 + parseFloat(s), 0));
+      const gapSecs = isLeader ? 0 : (parseTime(g.gap.replace("+", "")) || 0);
       const pct = isLeader ? 2 : Math.min(100, (gapSecs / maxGap) * 100);
 
       return `
         <div class="gap-bar-item">
           <div class="gap-bar-name">${i + 1}. ${g.name.split(" ")[0]}</div>
           <div class="gap-bar-track">
-            <div class="gap-bar-fill ${isLeader ? "gap-bar-leader" : ""} ${isLapDown ? "gap-bar-lap-down" : ""}" style="width:${pct}%"></div>
+            <div class="gap-bar-fill ${isLeader ? "gap-bar-leader" : ""}" style="width:${pct}%"></div>
           </div>
           <div class="gap-label">${isLeader ? "LEADER" : g.gap}</div>
         </div>
@@ -1004,13 +1078,16 @@
     const top4 = RACE_DATA.drivers.filter((d) => d.sessions.race1).sort((a, b) => a.sessions.race1.pos - b.sessions.race1.pos).slice(0, 4);
     const maxLaps = Math.min(...top4.map((d) => d.sessions.race1.laps));
 
+    // Reference lap time: fastest driver's best lap (used for fallback when a lap time is null)
+    const refLapTime = parseTime(top4[0]?.sessions.race1?.bestLap) || 65;
+
     const labels = Array.from({ length: maxLaps }, (_, i) => `Lap ${i + 1}`);
 
     const datasets = top4.map((d, i) => {
       let cumulative = 0;
       const cumulatives = (d.sessions.race1.lapTimes || []).slice(1, maxLaps + 1).map((t) => {
         const secs = parseTime(t);
-        cumulative += secs || 82;
+        cumulative += secs || refLapTime;
         return parseFloat(cumulative.toFixed(3));
       });
 
@@ -1116,8 +1193,8 @@
 
     // Lap details
     const lapTableBody = document.getElementById("modal-lap-table");
-    const sessions = ["practice1", "practice2", "qualifying", "race1", "race2"];
-    const sessionNames = ["Practice 1", "Practice 2", "Qualifying", "Race 1", "Race 2"];
+    const sessions = ["practice1", "practice2", "race1"];
+    const sessionNames = ["Run 1", "Run 2", "Run 3 (Best)"];
 
     lapTableBody.innerHTML = sessions.map((s, si) => {
       const sess = d.sessions[s];
@@ -1149,21 +1226,23 @@
       `;
     }).join("");
 
-    // Mini chart
+    // Mini chart — all runs for this round
     const chartCtx = document.getElementById("modal-lap-chart");
     if (chartCtx) {
       if (charts["modal-chart"]) charts["modal-chart"].destroy();
-      const r1Times = (d.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
-      const r2Times = (d.sessions.race2?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
-      const maxLen = Math.max(r1Times.length, r2Times.length);
+      const run1Times = (d.sessions.practice1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
+      const run2Times = (d.sessions.practice2?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
+      const run3Times = (d.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
+      const maxLen = Math.max(run1Times.length, run2Times.length, run3Times.length);
 
       charts["modal-chart"] = new Chart(chartCtx, {
         type: "line",
         data: {
           labels: Array.from({ length: maxLen }, (_, i) => "L" + (i + 1)),
           datasets: [
-            { label: "Race 1", data: r1Times, borderColor: cls?.color || PALETTE[0], backgroundColor: (cls?.color || PALETTE[0]) + "22", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 },
-            { label: "Race 2", data: r2Times, borderColor: "#4facfe", backgroundColor: "#4facfe22", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 }
+            { label: "Run 1", data: run1Times, borderColor: "#fd9644", backgroundColor: "#fd964422", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 },
+            { label: "Run 2", data: run2Times, borderColor: "#4facfe", backgroundColor: "#4facfe22", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 },
+            { label: "Run 3", data: run3Times, borderColor: cls?.color || PALETTE[0], backgroundColor: (cls?.color || PALETTE[0]) + "22", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 }
           ]
         },
         options: {
@@ -1186,7 +1265,7 @@
       <div class="grid-4" style="gap:12px;margin-bottom:20px">
         ${[
           { icon: "🏆", label: "Overall Pos", value: "P" + d.overallPos, color: "#e8b84b" },
-          { icon: "⚡", label: "Best Race Lap", value: d.sessions.race1?.bestLap || "—", color: cls?.color || "#888" },
+          { icon: "⚡", label: "Best Run 3 Lap", value: d.sessions.race1?.bestLap || "—", color: cls?.color || "#888" },
           { icon: "🔢", label: "Total Laps", value: d.totalLaps, color: "#4facfe" },
           { icon: "🏅", label: "Points", value: d.points, color: "#26de81" }
         ].map(({ icon, label, value, color }) => `
