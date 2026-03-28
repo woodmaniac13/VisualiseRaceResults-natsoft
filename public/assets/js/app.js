@@ -26,10 +26,57 @@
 
   // Dynamic y-axis floor for the active round (fastest race lap minus 3 s buffer)
   function chartMinTime() {
+    const sessionKey = getPrimarySessionKey();
     const times = RACE_DATA.drivers
-      .map((d) => parseTime(d.sessions.race1?.bestLap))
+      .map((d) => parseTime(d.sessions[sessionKey]?.bestLap))
       .filter(Boolean);
     return times.length ? Math.floor(Math.min(...times)) - 3 : 55;
+  }
+
+  function getAvailableSessionKeys() {
+    if (!RACE_DATA || !Array.isArray(RACE_DATA.drivers)) return [];
+    const keys = new Set();
+    RACE_DATA.drivers.forEach((d) => {
+      Object.keys(d.sessions || {}).forEach((k) => keys.add(k));
+    });
+    return [...keys];
+  }
+
+  function getPrimarySessionKey() {
+    const available = getAvailableSessionKeys();
+    const preferred = ["race1", "race2", "qualifying", "practice2", "practice1"];
+    return preferred.find((k) => available.includes(k)) || available[0] || "race1";
+  }
+
+  function getSessionLabel(sessionKey) {
+    const found = (RACE_DATA.event.sessions || []).find((s) => s.key === sessionKey);
+    return found?.label || RACE_DATA.event.phaseLabel || sessionKey;
+  }
+
+  function getTopDriversBySession(limit, sessionKey) {
+    const rows = RACE_DATA.drivers
+      .filter((d) => d.sessions[sessionKey])
+      .slice()
+      .sort((a, b) => {
+        const pa = a.sessions[sessionKey]?.pos ?? 999;
+        const pb = b.sessions[sessionKey]?.pos ?? 999;
+        if (pa !== pb) return pa - pb;
+        const ta = parseTime(a.sessions[sessionKey]?.bestLap) ?? Number.POSITIVE_INFINITY;
+        const tb = parseTime(b.sessions[sessionKey]?.bestLap) ?? Number.POSITIVE_INFINITY;
+        return ta - tb;
+      });
+    return rows.slice(0, limit);
+  }
+
+  function getLapTimesSeconds(driver, sessionKey) {
+    const laps = (driver.sessions[sessionKey]?.lapTimes || [])
+      .slice(1)
+      .map(parseTime)
+      .filter(Boolean);
+    if (!laps.length) return [];
+    const best = Math.min(...laps);
+    const cutoff = best + 20;
+    return laps.filter((t) => t <= cutoff);
   }
 
   // ─── Init ──────────────────────────────────
@@ -170,18 +217,17 @@
 
   // ─── Overview Panel ───────────────────────
   function renderOverview() {
-    renderPodium("race1");
-    renderPodium("practice2");
+    const sessionKey = getPrimarySessionKey();
+    renderPodium(sessionKey, "podium-race1");
+    renderImprovementPodium(sessionKey, "podium-race2");
     renderMiniLeaderboard();
     renderRecordCards();
     renderOverviewCharts();
     renderClassBreakdown();
   }
 
-  function renderPodium(session) {
-    // podium-race2 is used for the second podium card in HTML
-    const id = session === "practice2" ? "podium-race2" : `podium-${session}`;
-    const el = document.getElementById(id);
+  function renderPodium(session, targetId) {
+    const el = document.getElementById(targetId || `podium-${session}`);
     if (!el) return;
 
     const top3 = RACE_DATA.drivers
@@ -191,14 +237,13 @@
 
     if (top3.length < 3) { el.innerHTML = "<div style='color:var(--text-muted);padding:16px;font-size:13px'>No data</div>"; return; }
 
-    const labels = [2, 1, 3];
     const orderedTop3 = [top3[1], top3[0], top3[2]];
     const positions = [2, 1, 3];
 
     el.innerHTML = orderedTop3
       .map((d, i) => {
         const pos = positions[i];
-        const medal = pos === 1 ? "🥇" : pos === 2 ? "🥈" : "🥉";
+        const medal = pos === 1 ? "1" : pos === 2 ? "2" : "3";
         return `
           <div class="podium-step podium-${pos}">
             <div class="podium-driver">
@@ -211,6 +256,46 @@
         `;
       })
       .join("");
+  }
+
+  function renderImprovementPodium(session, targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+
+    const ranked = RACE_DATA.drivers
+      .map((d) => {
+        const laps = getLapTimesSeconds(d, session);
+        if (!laps.length) return null;
+        const first = laps[0];
+        const best = Math.min(...laps);
+        const gain = first - best;
+        if (gain <= 0) return null;
+        return { d, gain };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.gain - a.gain)
+      .slice(0, 3);
+
+    if (ranked.length < 3) {
+      el.innerHTML = "<div style='color:var(--text-muted);padding:16px;font-size:13px'>No improvement data</div>";
+      return;
+    }
+
+    const ordered = [ranked[1], ranked[0], ranked[2]];
+    const positions = [2, 1, 3];
+    el.innerHTML = ordered.map((row, i) => {
+      const pos = positions[i];
+      return `
+        <div class="podium-step podium-${pos}">
+          <div class="podium-driver">
+            <div class="podium-car-num">#${row.d.car}</div>
+            <div class="podium-name">${row.d.name.split(" ")[0]}</div>
+            <div class="podium-time">-${row.gain.toFixed(3)}s</div>
+          </div>
+          <div class="podium-block">${pos}</div>
+        </div>
+      `;
+    }).join("");
   }
 
   function renderMiniLeaderboard() {
@@ -256,7 +341,10 @@
     };
     setRecord("record-fastest-lap", "⚡", "#a855f7", r.fastestLap.time, "Fastest Overall Lap", `#${RACE_DATA.drivers.find(d=>d.car===r.fastestLap.car)?.car} ${r.fastestLap.driver} (${r.fastestLap.session})`);
     setRecord("record-fastest-race", "🏁", "#e8b84b", r.fastestRaceLap.time, "Fastest Race Lap", `#${r.fastestRaceLap.car} ${r.fastestRaceLap.driver} (${r.fastestRaceLap.session})`);
-    setRecord("record-most-laps", "🔢", "#4facfe", r.mostLaps.laps + " Laps", "Most Laps Completed", RACE_DATA.drivers.find(d=>d.car===r.mostLaps.car)?.name + " (#" + r.mostLaps.car + ")");
+    const p2Gap = (RACE_DATA.race1Gaps || [])[1];
+    const gapText = p2Gap?.gap && p2Gap.gap !== "---" ? p2Gap.gap : "-";
+    const gapLabel = p2Gap ? `${p2Gap.name} to leader` : "No gap data";
+    setRecord("record-most-laps", "⏱", "#4facfe", gapText, "Gap P1 to P2", gapLabel);
     setRecord("record-entries", "👥", "#26de81", RACE_DATA.drivers.length + " Cars", "Total Entries", `Across ${Object.keys(RACE_DATA.classes).length} Classes`);
   }
 
@@ -307,16 +395,18 @@
     if (!ctx) return;
     if (charts["session-comparison"]) charts["session-comparison"].destroy();
 
-    const sessions = ["practice1", "practice2", "race1"];
-    const sessionLabels = ["Run 1", "Run 2", "Run 3"];
-    const top5 = RACE_DATA.drivers.slice(0, 5);
+    const sessionKey = getPrimarySessionKey();
+    const top5 = getTopDriversBySession(5, sessionKey);
+    const maxLaps = Math.max(...top5.map((d) => getLapTimesSeconds(d, sessionKey).length), 0);
+    if (!top5.length || !maxLaps) return;
+    const lapLabels = Array.from({ length: maxLaps }, (_, i) => `Lap ${i + 1}`);
 
-    const datasets = top5.map((d, i) => ({
+    const datasets = top5.map((d, i) => {
+      const laps = getLapTimesSeconds(d, sessionKey);
+      const padded = Array.from({ length: maxLaps }, (_, idx) => laps[idx] ?? null);
+      return {
       label: d.name.split(" ")[0],
-      data: sessions.map((s) => {
-        const t = parseTime(d.sessions[s]?.bestLap);
-        return t ? parseFloat(t.toFixed(3)) : null;
-      }),
+      data: padded,
       borderColor: PALETTE[i],
       backgroundColor: PALETTE[i] + "22",
       tension: 0.3,
@@ -324,11 +414,12 @@
       pointRadius: 5,
       pointHoverRadius: 7,
       spanGaps: true
-    }));
+    };
+    });
 
     charts["session-comparison"] = new Chart(ctx, {
       type: "line",
-      data: { labels: sessionLabels, datasets },
+      data: { labels: lapLabels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: true,
@@ -346,7 +437,8 @@
           y: {
             grid: { color: "#252d3d" },
             ticks: { color: "#8892a4", callback: (v) => formatTime(v) },
-            reverse: false
+            reverse: false,
+            min: chartMinTime()
           }
         }
       }
@@ -700,26 +792,40 @@
     if (!ctx) return;
     if (charts["session-best"]) charts["session-best"].destroy();
 
-    const sessions = ["practice1", "practice2", "race1"];
-    const sessionLabels = ["R1", "R2", "R3"];
-    const top6 = RACE_DATA.drivers.slice(0, 6);
-
-    const datasets = top6.map((d, i) => ({
-      label: `#${d.car} ${d.name.split(" ")[0]}`,
-      data: sessions.map((s) => {
-        const t = parseTime(d.sessions[s]?.bestLap);
-        return t ? parseFloat(t.toFixed(3)) : null;
-      }),
-      backgroundColor: PALETTE[i] + "cc",
-      borderColor: PALETTE[i],
-      borderWidth: 2,
-      borderRadius: 4,
-      spanGaps: true
-    }));
+    const sessionKey = getPrimarySessionKey();
+    const top6 = getTopDriversBySession(6, sessionKey);
+    if (!top6.length) return;
+    const labels = top6.map((d) => `#${d.car} ${d.name.split(" ")[0]}`);
+    const bestLapData = top6.map((d) => parseTime(d.sessions[sessionKey]?.bestLap) || null);
+    const avgLapData = top6.map((d) => {
+      const laps = getLapTimesSeconds(d, sessionKey);
+      if (!laps.length) return null;
+      return laps.reduce((a, b) => a + b, 0) / laps.length;
+    });
 
     charts["session-best"] = new Chart(ctx, {
       type: "bar",
-      data: { labels: sessionLabels, datasets },
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Best Lap",
+            data: bestLapData,
+            backgroundColor: "#e8b84bcc",
+            borderColor: "#e8b84b",
+            borderWidth: 2,
+            borderRadius: 4
+          },
+          {
+            label: "Average Lap",
+            data: avgLapData,
+            backgroundColor: "#4facfeaa",
+            borderColor: "#4facfe",
+            borderWidth: 2,
+            borderRadius: 4
+          }
+        ]
+      },
       options: {
         responsive: true,
         maintainAspectRatio: true,
@@ -948,18 +1054,28 @@
     const colorA = RACE_DATA.classes[dA.class]?.color || PALETTE[0];
     const colorB = RACE_DATA.classes[dB.class]?.color || PALETTE[1];
 
+    const sessionKey = getPrimarySessionKey();
+    const sessionLabel = getSessionLabel(sessionKey);
+    const avgA = (() => {
+      const laps = getLapTimesSeconds(dA, sessionKey);
+      return laps.length ? laps.reduce((s, v) => s + v, 0) / laps.length : null;
+    })();
+    const avgB = (() => {
+      const laps = getLapTimesSeconds(dB, sessionKey);
+      return laps.length ? laps.reduce((s, v) => s + v, 0) / laps.length : null;
+    })();
+
     const stats = [
-      { label: "Best Run 2 Lap", a: parseTime(dA.sessions.practice2?.bestLap), b: parseTime(dB.sessions.practice2?.bestLap), format: formatTime, lowerBetter: true },
-      { label: "Best Run 3 Lap", a: parseTime(dA.sessions.race1?.bestLap), b: parseTime(dB.sessions.race1?.bestLap), format: formatTime, lowerBetter: true },
-      { label: "Run 3 Position", a: dA.sessions.race1?.pos, b: dB.sessions.race1?.pos, format: (v) => "P" + v, lowerBetter: true },
-      { label: "Run 2 Position", a: dA.sessions.practice2?.pos || dA.overallPos, b: dB.sessions.practice2?.pos || dB.overallPos, format: (v) => "P" + v, lowerBetter: true },
-      { label: "Laps Completed", a: dA.sessions.race1?.laps, b: dB.sessions.race1?.laps, format: (v) => v + " laps", lowerBetter: false },
+      { label: `${sessionLabel} Best Lap`, a: parseTime(dA.sessions[sessionKey]?.bestLap), b: parseTime(dB.sessions[sessionKey]?.bestLap), format: formatTime, lowerBetter: true },
+      { label: `${sessionLabel} Position`, a: dA.sessions[sessionKey]?.pos || dA.overallPos, b: dB.sessions[sessionKey]?.pos || dB.overallPos, format: (v) => "P" + v, lowerBetter: true },
+      { label: `${sessionLabel} Laps`, a: dA.sessions[sessionKey]?.laps, b: dB.sessions[sessionKey]?.laps, format: (v) => v + " laps", lowerBetter: false },
+      { label: `${sessionLabel} Avg Lap`, a: avgA, b: avgB, format: formatTime, lowerBetter: true },
       { label: "Total Points", a: dA.points, b: dB.points, format: (v) => v + " pts", lowerBetter: false },
       { label: "Engine Capacity", a: dA.capacity, b: dB.capacity, format: (v) => v.toLocaleString() + "cc", lowerBetter: false }
     ];
 
     el.innerHTML = stats.map(({ label, a, b, format, lowerBetter }) => {
-      if (!a || !b) return "";
+      if (a == null || b == null) return "";
       const maxVal = Math.max(a, b);
       const minVal = Math.min(a, b);
       const range = maxVal - minVal || 1;
@@ -1057,29 +1173,35 @@
 
   // ─── Gap Analysis ─────────────────────────
   function renderGapAnalysis() {
-    renderGapBars("race1");
-    renderGapBars("practice2");
+    renderGapBars("race1", "gap", "gap-bars-race1");
+    renderGapBars("race1", "interval", "gap-bars-race2");
     renderGapOverTimeChart();
   }
 
-  function renderGapBars(session) {
-    // Map session key to the HTML element ID
-    const elId = session === "practice2" ? "gap-bars-race2" : `gap-bars-${session}`;
-    const el = document.getElementById(elId);
+  function renderGapBars(session, mode, targetId) {
+    const el = document.getElementById(targetId || `gap-bars-${session}`);
     if (!el) return;
 
     const gaps = RACE_DATA.race1Gaps;
+    if (!Array.isArray(gaps) || !gaps.length) {
+      el.innerHTML = "<div style='color:var(--text-muted);font-size:13px;padding:16px'>No gap data available.</div>";
+      return;
+    }
+
+    const key = mode === "interval" ? "interval" : "gap";
 
     // Dynamic max gap based on the actual data
     const gapTimes = gaps.slice(1).map((g) => {
-      if (!g.gap || g.gap === "---") return 0;
-      return parseTime(g.gap.replace("+", "")) || 0;
+      const value = g[key];
+      if (!value || value === "---") return 0;
+      return parseTime(value.replace("+", "")) || 0;
     }).filter((t) => t > 0 && t < 300);
     const maxGap = gapTimes.length ? Math.max(...gapTimes) * 1.15 : 10;
 
     el.innerHTML = gaps.map((g, i) => {
       const isLeader = i === 0;
-      const gapSecs = isLeader ? 0 : (parseTime(g.gap.replace("+", "")) || 0);
+      const value = g[key];
+      const gapSecs = isLeader ? 0 : (parseTime((value || "").replace("+", "")) || 0);
       const pct = isLeader ? 2 : Math.min(100, (gapSecs / maxGap) * 100);
 
       return `
@@ -1088,7 +1210,7 @@
           <div class="gap-bar-track">
             <div class="gap-bar-fill ${isLeader ? "gap-bar-leader" : ""}" style="width:${pct}%"></div>
           </div>
-          <div class="gap-label">${isLeader ? "LEADER" : g.gap}</div>
+          <div class="gap-label">${isLeader ? (mode === "gap" ? "LEADER" : "-") : (value || "-")}</div>
         </div>
       `;
     }).join("");
@@ -1218,22 +1340,30 @@
 
     // Lap details
     const lapTableBody = document.getElementById("modal-lap-table");
-    const sessions = ["practice1", "practice2", "race1"];
-    const sessionNames = ["Run 1", "Run 2", "Run 3 (Best)"];
+    const sessionOrder = ["practice1", "practice2", "qualifying", "race1", "race2"];
+    const sessions = Object.keys(d.sessions || {}).sort((a, b) => {
+      const ai = sessionOrder.indexOf(a);
+      const bi = sessionOrder.indexOf(b);
+      const ar = ai === -1 ? 999 : ai;
+      const br = bi === -1 ? 999 : bi;
+      return ar - br || a.localeCompare(b);
+    });
 
-    lapTableBody.innerHTML = sessions.map((s, si) => {
+    lapTableBody.innerHTML = sessions.map((s) => {
       const sess = d.sessions[s];
       if (!sess) return "";
       const isRace = s.startsWith("race");
       const lapTimes = (sess.lapTimes || []).slice(1);
+      if (!lapTimes.length) return "";
       const fastestTime = Math.min(...lapTimes.map(parseTime).filter(Boolean));
+      const sessionName = getSessionLabel(s);
 
       const lapRows = lapTimes.map((t, li) => {
         const secs = parseTime(t);
         const isBest = secs && Math.abs(secs - fastestTime) < 0.001;
         return `
           <tr class="${isBest ? "lap-highlight" : ""}">
-            <td>${sessionNames[si]}</td>
+            <td>${sessionName}</td>
             <td>${li + 1}</td>
             <td style="color:${isBest ? "#a855f7" : "var(--text-primary)"}">
               ${t || "—"} ${isBest ? "⚡" : ""}
@@ -1245,7 +1375,7 @@
 
       return `
         <tr style="background:var(--bg-secondary)">
-          <td colspan="4" style="font-weight:700;color:var(--accent-primary);padding:10px 12px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">${sessionNames[si]} — Best: ${sess.bestLap} (${sess.laps} laps)</td>
+          <td colspan="4" style="font-weight:700;color:var(--accent-primary);padding:10px 12px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">${sessionName} — Best: ${sess.bestLap} (${sess.laps || lapTimes.length} laps)</td>
         </tr>
         ${lapRows}
       `;
@@ -1255,20 +1385,36 @@
     const chartCtx = document.getElementById("modal-lap-chart");
     if (chartCtx) {
       if (charts["modal-chart"]) charts["modal-chart"].destroy();
-      const run1Times = (d.sessions.practice1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
-      const run2Times = (d.sessions.practice2?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
-      const run3Times = (d.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
-      const maxLen = Math.max(run1Times.length, run2Times.length, run3Times.length);
+      const sessionSeries = sessions
+        .map((s, i) => {
+          const times = (d.sessions[s]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
+          if (!times.length) return null;
+          const color = s === "race1" ? (cls?.color || PALETTE[0]) : PALETTE[i % PALETTE.length];
+          return {
+            label: getSessionLabel(s),
+            data: times,
+            borderColor: color,
+            backgroundColor: color + "22"
+          };
+        })
+        .filter(Boolean);
+      const maxLen = Math.max(...sessionSeries.map((x) => x.data.length), 0);
+      if (!sessionSeries.length || !maxLen) return;
 
       charts["modal-chart"] = new Chart(chartCtx, {
         type: "line",
         data: {
           labels: Array.from({ length: maxLen }, (_, i) => "L" + (i + 1)),
-          datasets: [
-            { label: "Run 1", data: run1Times, borderColor: "#fd9644", backgroundColor: "#fd964422", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 },
-            { label: "Run 2", data: run2Times, borderColor: "#4facfe", backgroundColor: "#4facfe22", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 },
-            { label: "Run 3", data: run3Times, borderColor: cls?.color || PALETTE[0], backgroundColor: (cls?.color || PALETTE[0]) + "22", tension: 0.3, fill: true, pointRadius: 3, borderWidth: 2 }
-          ]
+          datasets: sessionSeries.map((series) => ({
+            label: series.label,
+            data: series.data,
+            borderColor: series.borderColor,
+            backgroundColor: series.backgroundColor,
+            tension: 0.3,
+            fill: true,
+            pointRadius: 3,
+            borderWidth: 2
+          }))
         },
         options: {
           responsive: true,
@@ -1286,11 +1432,13 @@
     }
 
     // Summary stats
+    const sessionKey = getPrimarySessionKey();
+    const sessionLabel = getSessionLabel(sessionKey);
     document.getElementById("modal-summary").innerHTML = `
       <div class="grid-4" style="gap:12px;margin-bottom:20px">
         ${[
           { icon: "🏆", label: "Overall Pos", value: "P" + d.overallPos, color: "#e8b84b" },
-          { icon: "⚡", label: "Best Run 3 Lap", value: d.sessions.race1?.bestLap || "—", color: cls?.color || "#888" },
+          { icon: "⚡", label: `${sessionLabel} Best Lap`, value: d.sessions[sessionKey]?.bestLap || "—", color: cls?.color || "#888" },
           { icon: "🔢", label: "Total Laps", value: d.totalLaps, color: "#4facfe" },
           { icon: "🏅", label: "Points", value: d.points, color: "#26de81" }
         ].map(({ icon, label, value, color }) => `
