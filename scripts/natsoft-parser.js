@@ -81,7 +81,25 @@ function getTextContent(html) {
   return html.textContent || html.innerText || '';
 }
 
-function parseResultRow(line) {
+function getResultColumnIndexes(headerLine) {
+  if (!headerLine) return null;
+  const indexes = {
+    pos: headerLine.indexOf('Pos'),
+    car: headerLine.indexOf('Car'),
+    driver: headerLine.indexOf('Driver'),
+    team: headerLine.indexOf('Competitor/Team'),
+    vehicle: headerLine.indexOf('Vehicle'),
+    capacity: headerLine.indexOf('Cap'),
+    class: headerLine.indexOf('CL'),
+    laps: headerLine.indexOf('Laps'),
+    raceTime: headerLine.indexOf('Race.Time'),
+    fastest: headerLine.indexOf('Fastest')
+  };
+
+  return Object.values(indexes).every((v) => v >= 0) ? indexes : null;
+}
+
+function parseResultRowLegacy(line) {
   const baseMatch = line.match(/^\s*(DNF|\d+)\s+(\d+)\s+(.+?)\s+\(([A-Z]{2,3})\)\s+(.*)$/);
   if (!baseMatch) return null;
 
@@ -116,6 +134,46 @@ function parseResultRow(line) {
   };
 }
 
+function parseResultRow(line, columns) {
+  if (!columns) return parseResultRowLegacy(line);
+
+  const posToken = line.slice(columns.pos, columns.car).trim();
+  const carToken = line.slice(columns.car, columns.driver).trim();
+  const driverToken = line.slice(columns.driver, columns.team).trim();
+  const team = line.slice(columns.team, columns.vehicle).trim();
+  const vehicle = line.slice(columns.vehicle, columns.capacity).trim();
+  const capacity = line.slice(columns.capacity, columns.class).trim();
+  const raceClass = line.slice(columns.class, columns.laps).trim();
+  const laps = line.slice(columns.laps, columns.raceTime).trim();
+  const raceTime = line.slice(columns.raceTime, columns.fastest).trim();
+  const fastestInfo = line.slice(columns.fastest).trim();
+
+  if (!posToken || !carToken || !driverToken) return parseResultRowLegacy(line);
+
+  const driverMatch = driverToken.match(/^(.*?)\s*\(([A-Z]{2,3})\)$/);
+  if (!driverMatch) return parseResultRowLegacy(line);
+
+  const [, name, state] = driverMatch;
+  const isDnf = posToken === 'DNF';
+  const fastestMatch = fastestInfo.match(/^(\d+)\s+([0-9:.]+)\*?$/);
+
+  return {
+    car: parseInt(carToken, 10),
+    name: name.trim(),
+    state,
+    team,
+    vehicle,
+    capacity: /^\d+$/.test(capacity) ? parseInt(capacity, 10) : null,
+    class: raceClass,
+    pos: isDnf ? null : parseInt(posToken, 10),
+    dnf: isDnf,
+    laps: /^\d+$/.test(laps) ? parseInt(laps, 10) : null,
+    raceTime: raceTime || null,
+    fastestLapNum: fastestMatch ? parseInt(fastestMatch[1], 10) : null,
+    fastestLap: fastestMatch ? fastestMatch[2] : null
+  };
+}
+
 /**
  * Parse Result.html to extract final results and race information
  * @param {string} resultHtml - HTML content of Result.html
@@ -125,6 +183,9 @@ function parseResultsTable(resultHtml) {
   const drivers = [];
   const metadata = { laps: 15, lapsCompleted: 0 };
   const text = normalizeHtmlText(resultHtml);
+  const lines = extractLines(resultHtml);
+  const headerLine = lines.find((line) => line.includes('Pos Car') && line.includes('Race.Time'));
+  const columnIndexes = getResultColumnIndexes(headerLine);
   
   // Extract event metadata from header
   const headerMatch = text.match(/HERA Excel - Race (\d+)/i);
@@ -144,10 +205,10 @@ function parseResultsTable(resultHtml) {
     metadata.eventDay = parseInt(dateMatch[2], 10);
   }
 
-  extractLines(resultHtml)
+  lines
     .filter((line) => /^\s*(?:DNF|\d+)\s+\d+\s+/.test(line))
     .forEach((line) => {
-      const parsed = parseResultRow(line);
+      const parsed = parseResultRow(line, columnIndexes);
       if (parsed) drivers.push(parsed);
     });
 
@@ -292,6 +353,9 @@ function mergeDriverData(resultsData, lapTimesData) {
     const mergedDriver = { ...driver };
 
     if (lapData) {
+      if (lapData.class && /^[A-Z]{3}$/.test(lapData.class)) {
+        mergedDriver.class = lapData.class;
+      }
       mergedDriver.lapTimes = lapData.lapTimes;
       const stats = calculateLapStats(lapData.lapTimes);
       mergedDriver.stats = stats;

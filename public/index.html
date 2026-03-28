@@ -153,7 +153,7 @@
     <!-- Leaderboard + Classes -->
     <div class="grid-2">
       <div class="card">
-        <div class="card-title"><span class="icon"></span> Points Standings</div>
+        <div class="card-title"><span class="icon"></span> Session Order</div>
         <div id="mini-leaderboard"></div>
       </div>
       <div class="card">
@@ -508,8 +508,22 @@
     if (!text) return "UNK";
     const token = text.split(/\s+/)[0].replace(/[^A-Z0-9]/g, "");
     if (!token) return "UNK";
+    if (/^\d+$/.test(token)) return "UNK";
     if (token.length <= 5) return token;
     return token.slice(0, 5);
+  }
+
+  function getEmbeddedSessionCorrections(sessionType, source) {
+    const resultPath = source?.sourceFiles?.result || "";
+    if (sessionType === "race-3" && resultPath.includes("678002590_Result_01_22-03-20260004r1015-lapshera-excel-race-3")) {
+      return {
+        27: { class: "EXT" },
+        72: { class: "EXT" },
+        101: { class: "EXT" },
+        916: { class: "EXT" }
+      };
+    }
+    return {};
   }
 
   function bestLapSeconds(driver) {
@@ -601,6 +615,7 @@
     if (!source) return null;
 
     const rows = source.drivers || [];
+    const sessionCorrections = getEmbeddedSessionCorrections(sessionType, source);
 
     const rowMap = new Map(rows.map((d) => [`${d.car}|${d.name}`, d]));
 
@@ -611,15 +626,15 @@
     const drivers = Array.from(allKeys).map((key, idx) => {
       const sourceRow = rowMap.get(key);
       const base = sourceRow;
+      const correction = sessionCorrections[Number(base.car)] || {};
 
-      const classCode = sanitizeClass(base.class);
+      const classCode = sanitizeClass(correction.class || base.class);
       classCodes.push(classCode);
       const race1 = sessionRecord(sourceRow, rowRank);
 
       const bests = [race1].map((s) => parseTime(s && s.bestLap)).filter((v) => v != null);
       const avgBest = bests.length ? formatTime(bests.reduce((a, b) => a + b, 0) / bests.length) : "-";
       const overallPos = race1 ? race1.pos : 999;
-      const points = Math.max(5, 130 - overallPos * 4);
 
       const sessions = {};
       if (race1) sessions.race1 = race1;
@@ -636,8 +651,7 @@
         sessions,
         overallPos,
         totalLaps: race1 ? race1.laps : 0,
-        avgBestLap: avgBest,
-        points
+        avgBestLap: avgBest
       };
     }).sort((a, b) => a.overallPos - b.overallPos || a.car - b.car);
 

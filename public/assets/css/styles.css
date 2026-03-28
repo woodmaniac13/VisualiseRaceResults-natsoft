@@ -718,8 +718,8 @@ body::before {
 .podium-2 .podium-block { height: 75px; background: linear-gradient(180deg, #c0c0c0 0%, #888 100%); color: rgba(0,0,0,0.4); }
 .podium-3 .podium-block { height: 55px; background: linear-gradient(180deg, #cd7f32 0%, #8b4513 100%); color: rgba(0,0,0,0.4); }
 
-/* ===== Points table ===== */
-.points-bar {
+/* ===== Session order table ===== */
+.session-order-bar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -727,11 +727,11 @@ body::before {
   border-bottom: 1px solid var(--border-color);
 }
 
-.points-bar:last-child {
+.session-order-bar:last-child {
   border-bottom: none;
 }
 
-.points-pos {
+.session-order-pos {
   width: 28px;
   font-weight: 700;
   font-family: var(--font-mono);
@@ -739,13 +739,13 @@ body::before {
   text-align: right;
 }
 
-.points-name {
+.session-order-name {
   flex: 1;
   font-weight: 600;
   min-width: 0;
 }
 
-.points-track {
+.session-order-track {
   width: 120px;
   height: 8px;
   background: var(--bg-secondary);
@@ -753,13 +753,13 @@ body::before {
   overflow: hidden;
 }
 
-.points-fill {
+.session-order-fill {
   height: 100%;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--accent-primary), #ff6b35);
 }
 
-.points-value {
+.session-order-value {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 15px;

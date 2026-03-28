@@ -355,22 +355,32 @@
   function renderMiniLeaderboard() {
     const el = document.getElementById("mini-leaderboard");
     if (!el) return;
-    const sorted = [...RACE_DATA.drivers].sort((a, b) => a.overallPos - b.overallPos);
+    const sessionKey = getPrimarySessionKey();
+    const sorted = [...RACE_DATA.drivers]
+      .filter((d) => d.sessions[sessionKey])
+      .sort((a, b) => (a.sessions[sessionKey]?.pos ?? 999) - (b.sessions[sessionKey]?.pos ?? 999));
+    const lapTimes = sorted.map((d) => parseTime(d.sessions[sessionKey]?.bestLap)).filter(Boolean);
+    const minLap = lapTimes.length ? Math.min(...lapTimes) : null;
+    const maxLap = lapTimes.length ? Math.max(...lapTimes) : null;
+    const range = minLap != null && maxLap != null ? Math.max(maxLap - minLap, 0.001) : 1;
     el.innerHTML = sorted
       .map((d) => {
-        const posClass = d.overallPos <= 3 ? `pos-${d.overallPos}` : "";
+        const pos = d.sessions[sessionKey]?.pos ?? d.overallPos;
+        const posClass = pos <= 3 ? `pos-${pos}` : "";
         const cls = RACE_DATA.classes[d.class];
+        const lap = parseTime(d.sessions[sessionKey]?.bestLap);
+        const width = lap != null && minLap != null ? 35 + (1 - ((lap - minLap) / range)) * 65 : 35;
         return `
-          <div class="points-bar" onclick="showDriverModal(${d.id})" style="cursor:pointer">
-            <span class="points-pos ${posClass}">${d.overallPos}</span>
-            <span class="points-name">
+          <div class="session-order-bar" onclick="showDriverModal(${d.id})" style="cursor:pointer">
+            <span class="session-order-pos ${posClass}">${pos}</span>
+            <span class="session-order-name">
               <span class="driver-name">${d.name}</span>
               <span style="margin-left:8px" class="class-badge" style="border-color:${cls ? cls.color : "#888"};color:${cls ? cls.color : "#888"}">${d.class}</span>
             </span>
-            <div class="points-track">
-              <div class="points-fill" style="width:${(d.points / 60) * 100}%"></div>
+            <div class="session-order-track">
+              <div class="session-order-fill" style="width:${width}%"></div>
             </div>
-            <span class="points-value">${d.points}</span>
+            <span class="session-order-value">${d.sessions[sessionKey]?.bestLap || "—"}</span>
           </div>
         `;
       })
@@ -913,7 +923,7 @@
       // Consistency: how tight the lap time spread is within the run (lower spread = better)
       // Multiply by 50 so that a 2-second spread = ~0% and 0-second spread = 100%
       const consistency = Math.max(0, 100 - (worstLap - bestLap) * 50);
-      // Speed: proximity to the fastest overall lap; deduct 5 points per second behind the leader
+      // Speed: proximity to the fastest overall lap; deduct 5 score units per second behind the leader
       const speedScore  = Math.max(0, 100 - (bestLap - fastestOverall) * 5);
       const lapsScore   = (r1?.laps / 3) * 100;
       const classScore  = ["1S3", "2C", "2S4", "1S4"].includes(d.class) ? 90 : 72;
@@ -1211,8 +1221,8 @@
             <div style="color:var(--text-muted);font-size:11px">${d.club}</div>
           </div>
           <div style="margin-left:auto;text-align:right">
-            <div style="font-size:24px;font-weight:700;color:var(--accent-primary)">${d.points}pts</div>
-            <div style="font-size:11px;color:var(--text-muted)">Overall P${d.overallPos}</div>
+            <div style="font-size:24px;font-weight:700;color:var(--accent-primary)">${d.sessions.race1?.bestLap || "—"}</div>
+            <div style="font-size:11px;color:var(--text-muted)">P${d.sessions.race1?.pos || d.overallPos} • ${d.sessions.race1?.laps || d.totalLaps} laps</div>
           </div>
         </div>
       `;
@@ -1247,7 +1257,6 @@
       { label: `${sessionLabel} Laps`, a: dA.sessions[sessionKey]?.laps, b: dB.sessions[sessionKey]?.laps, format: (v) => v + " laps", lowerBetter: false },
       { label: `${sessionLabel} Avg Lap`, a: avgA, b: avgB, format: formatTime, lowerBetter: true },
       { label: `${sessionLabel} Best 5-Lap Avg`, a: attackA?.avg ?? null, b: attackB?.avg ?? null, format: formatTime, lowerBetter: true },
-      { label: "Total Points", a: dA.points, b: dB.points, format: (v) => v + " pts", lowerBetter: false },
       { label: "Engine Capacity", a: dA.capacity, b: dB.capacity, format: (v) => v.toLocaleString() + "cc", lowerBetter: false }
     ];
 
@@ -1496,8 +1505,8 @@
               <div class="driver-stat-label">Class</div>
             </div>
             <div class="driver-stat">
-              <div class="driver-stat-value" style="color:var(--accent-primary)">${d.points}</div>
-              <div class="driver-stat-label">Points</div>
+              <div class="driver-stat-value" style="color:var(--accent-primary)">${d.sessions.race1?.laps || d.totalLaps || "—"}</div>
+              <div class="driver-stat-label">Laps</div>
             </div>
           </div>
         </div>
@@ -1624,7 +1633,7 @@
           { icon: "🏆", label: "Overall Pos", value: "P" + d.overallPos, color: "#e8b84b" },
           { icon: "⚡", label: `${sessionLabel} Best Lap`, value: d.sessions[sessionKey]?.bestLap || "—", color: cls?.color || "#888" },
           { icon: "🎯", label: "Best 5-Lap Avg", value: attackWindow ? formatTime(attackWindow.avg) : "—", color: "#4facfe" },
-          { icon: "🏅", label: "Points", value: d.points, color: "#26de81" }
+          { icon: "🔢", label: `${sessionLabel} Laps`, value: d.sessions[sessionKey]?.laps || d.totalLaps || "—", color: "#26de81" }
         ].map(({ icon, label, value, color }) => `
           <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;text-align:center;border:1px solid var(--border-color)">
             <div style="font-size:20px">${icon}</div>

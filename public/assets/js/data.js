@@ -93,8 +93,7 @@ function buildRound(meta, bestMap) {
       },
       overallPos: pos,
       totalLaps:  9,
-      avgBestLap: formatTime(((b + 1.812) + (b + 0.645) + b) / 3),
-      points:     Math.max(10, 110 - pos * 10)
+      avgBestLap: formatTime(((b + 1.812) + (b + 0.645) + b) / 3)
     });
   });
 
