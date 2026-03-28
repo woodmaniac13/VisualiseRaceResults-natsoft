@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Race Results Visualiser — Natsoft | NSW Supersprint Championship</title>
-  <meta name="description" content="Interactive race results visualisation for NSW Supersprint Championship. Powered by Natsoft race timing data." />
+  <title>Race Results Visualiser — Natsoft | NSW Supersprint Championship 2025</title>
+  <meta name="description" content="Interactive race results visualisation for NSW Supersprint Championship 2025. Powered by Natsoft race timing data." />
 
   <!-- Chart.js (local) -->
   <script src="chart.umd.min.js"></script>
@@ -60,6 +60,11 @@
         <span class="event-meta-item">🏆 <span id="hero-round"></span></span>
         <span class="event-meta-item"><span class="live-dot"></span> Natsoft Timing</span>
       </div>
+      <!-- Round selector -->
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label style="font-size:13px;color:var(--text-muted);white-space:nowrap">Select Round:</label>
+        <select id="round-selector" class="filter-select" style="min-width:260px"></select>
+      </div>
     </div>
     <div class="event-stats">
       <div class="stat-chip">
@@ -93,7 +98,7 @@
     <!-- Records -->
     <div class="section-gap">
       <div class="section-header">
-        <h2 class="section-title">🏆 Event Records <span class="badge">Round 2</span></h2>
+        <h2 class="section-title">🏆 Event Records <span class="badge" id="hero-round-badge">Round 1</span></h2>
       </div>
       <div class="grid-4">
         <div id="record-fastest-lap"></div>
@@ -110,11 +115,11 @@
       </div>
       <div class="grid-2">
         <div class="card">
-          <div class="card-title"><span class="icon">🏁</span> Race 1 — Podium</div>
+          <div class="card-title"><span class="icon">🏁</span> Run 3 — Top 3</div>
           <div class="podium" id="podium-race1"></div>
         </div>
         <div class="card">
-          <div class="card-title"><span class="icon">🏁</span> Race 2 — Podium</div>
+          <div class="card-title"><span class="icon">🏁</span> Run 2 — Top 3</div>
           <div class="podium" id="podium-race2"></div>
         </div>
       </div>
@@ -164,22 +169,19 @@
     <div class="filter-bar">
       <input type="text" class="filter-search" id="result-search" placeholder="🔍  Search driver, vehicle, club..." />
       <select class="filter-select" id="result-session-select">
-        <option value="practice1">Practice 1</option>
-        <option value="practice2">Practice 2</option>
-        <option value="qualifying">Qualifying</option>
-        <option value="race1" selected>Race 1</option>
-        <option value="race2">Race 2</option>
+        <option value="practice1">Run 1</option>
+        <option value="practice2">Run 2</option>
+        <option value="race1" selected>Run 3 (Best)</option>
       </select>
       <select class="filter-select" id="result-class-filter">
         <option value="all">All Classes</option>
-        <option value="TA1">TA1</option>
-        <option value="TA2">TA2</option>
-        <option value="TA3">TA3</option>
-        <option value="TA4">TA4</option>
-        <option value="1S3">1S3</option>
-        <option value="2R3">2R3</option>
-        <option value="3S4">3S4</option>
         <option value="2S4">2S4</option>
+        <option value="2C">2C</option>
+        <option value="1S4">1S4</option>
+        <option value="1S3">1S3</option>
+        <option value="RA1">RA1</option>
+        <option value="RA2">RA2</option>
+        <option value="3S4">3S4</option>
       </select>
     </div>
 
@@ -220,14 +222,14 @@
 
     <!-- Fastest laps bar -->
     <div class="card section-gap">
-      <div class="card-title"><span class="icon">🏎️</span> Race 1 Best Lap Comparison</div>
+      <div class="card-title"><span class="icon">🏎️</span> Run 3 Best Lap Comparison</div>
       <div id="fastest-laps-bar"></div>
     </div>
 
     <!-- Charts -->
     <div class="grid-2 section-gap">
       <div class="card">
-        <div class="card-title"><span class="icon">📊</span> Lap Time Distribution — Race 1</div>
+        <div class="card-title"><span class="icon">📊</span> Lap Time Distribution — Run 3</div>
         <div class="chart-container">
           <canvas id="chart-lap-distribution"></canvas>
         </div>
@@ -259,7 +261,7 @@
 
     <!-- Class winners table -->
     <div class="card section-gap">
-      <div class="card-title"><span class="icon">🏆</span> Class Winners — Race 1</div>
+      <div class="card-title"><span class="icon">🏆</span> Class Winners — Run 3 (Best)</div>
       <div class="results-table-wrap">
         <table class="results-table">
           <thead>
@@ -279,7 +281,7 @@
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-title"><span class="icon">⏱️</span> Fastest Lap by Class — Race 1</div>
+        <div class="card-title"><span class="icon">⏱️</span> Fastest Lap by Class — Run 3</div>
         <div class="chart-container-tall">
           <canvas id="chart-class-laps"></canvas>
         </div>
@@ -325,7 +327,7 @@
     </div>
 
     <div class="card">
-      <div class="card-title"><span class="icon">📈</span> Race 1 — Lap-by-Lap Comparison</div>
+      <div class="card-title"><span class="icon">📈</span> Run 3 — Lap-by-Lap Comparison</div>
       <div class="chart-container-tall">
         <canvas id="chart-compare-laps"></canvas>
       </div>
@@ -342,24 +344,24 @@
 
     <div class="grid-2 section-gap">
       <div class="card">
-        <div class="card-title"><span class="icon">🏁</span> Race 1 — Final Gaps</div>
+        <div class="card-title"><span class="icon">🏁</span> Run 3 — Final Gaps</div>
         <div class="gap-bar-container" id="gap-bars-race1"></div>
       </div>
       <div class="card">
-        <div class="card-title"><span class="icon">🏁</span> Race 2 — Final Gaps</div>
+        <div class="card-title"><span class="icon">🏁</span> Run 2 — Final Gaps</div>
         <div class="gap-bar-container" id="gap-bars-race2">
-          <div style="color:var(--text-muted);font-size:13px;padding:16px">Gap data for Race 2 follows similar pattern to Race 1.</div>
+          <div style="color:var(--text-muted);font-size:13px;padding:16px">Gap data reflects best-lap time differences per run.</div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title"><span class="icon">📈</span> Race 1 — Gap Evolution (Top 4 Drivers)</div>
+      <div class="card-title"><span class="icon">📈</span> Run 3 — Gap Evolution (Top 4 Drivers)</div>
       <div class="chart-container-full">
         <canvas id="chart-gap-evolution"></canvas>
       </div>
       <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
-        Shows cumulative time gap to race leader after each lap. A rising line = falling further behind; flat = maintaining gap.
+        Shows cumulative time gap to the round leader across laps. A rising line = falling further behind; flat = maintaining gap.
       </div>
     </div>
   </section>
@@ -424,8 +426,8 @@
 <footer style="border-top:1px solid var(--border-color);padding:24px;text-align:center;color:var(--text-muted);font-size:12px;margin-top:48px">
   <div style="max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap">
     <span>🏁 RaceViz — Natsoft Race Results Visualiser</span>
-    <span>Data source: <a href="https://racing.natsoft.com.au/results/#2" target="_blank" rel="noopener" style="color:var(--accent-primary);text-decoration:none">racing.natsoft.com.au/results/#2</a></span>
-    <span>NSW Supersprint Championship Round 2 · 2025</span>
+    <span>Data source: <a href="https://racing.natsoft.com.au/676906379/object_339311.60a/View?8" target="_blank" rel="noopener" style="color:var(--accent-primary);text-decoration:none">racing.natsoft.com.au</a> · <a href="https://supersprintnsw.com/2025-nsw-supersprint-championship-results/" target="_blank" rel="noopener" style="color:var(--accent-primary);text-decoration:none">supersprintnsw.com</a></span>
+    <span>NSW Supersprint Championship 2025 · Rounds 1–5</span>
   </div>
 </footer>
 
