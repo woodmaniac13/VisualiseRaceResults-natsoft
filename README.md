@@ -1,6 +1,6 @@
-# VisualiseRaceResults-nataoft
+# VisualiseRaceResults-natsoft
 
-[Visit the GitHub Pages site here](https://woodmaniac13.github.io/VisualiseRaceResults-nataoft/).
+[Visit the GitHub Pages site here](https://woodmaniac13.github.io/VisualiseRaceResults-natsoft/).
 
 ## Documentation
 

@@ -68,15 +68,19 @@
     return rows.slice(0, limit);
   }
 
-  function getLapTimesSeconds(driver, sessionKey) {
+  function getSessionLapObjects(driver, sessionKey) {
     const laps = (driver.sessions[sessionKey]?.lapTimes || [])
       .slice(1)
-      .map(parseTime)
-      .filter(Boolean);
+      .map((lap, i) => ({ lapNo: i + 1, time: parseTime(lap) }))
+      .filter((x) => Boolean(x.time));
     if (!laps.length) return [];
-    const best = Math.min(...laps);
+    const best = Math.min(...laps.map((x) => x.time));
     const cutoff = best + 20;
-    return laps.filter((t) => t <= cutoff);
+    return laps.filter((x) => x.time <= cutoff);
+  }
+
+  function getLapTimesSeconds(driver, sessionKey) {
+    return getSessionLapObjects(driver, sessionKey).map((x) => x.time);
   }
 
   function parseGapSeconds(gapText) {
@@ -104,6 +108,28 @@
       if (avg < best) best = avg;
     }
     return Number.isFinite(best) ? best : null;
+  }
+
+  function getAttackWindow(driver, sessionKey, windowSize) {
+    const laps = getSessionLapObjects(driver, sessionKey);
+    if (!laps.length || laps.length < windowSize) return null;
+    let bestAvg = Number.POSITIVE_INFINITY;
+    let bestStart = 0;
+    for (let i = 0; i <= laps.length - windowSize; i++) {
+      const slice = laps.slice(i, i + windowSize);
+      const avg = slice.reduce((s, x) => s + x.time, 0) / windowSize;
+      if (avg < bestAvg) {
+        bestAvg = avg;
+        bestStart = i;
+      }
+    }
+    if (!Number.isFinite(bestAvg)) return null;
+    return {
+      avg: bestAvg,
+      startLap: laps[bestStart].lapNo,
+      endLap: laps[bestStart + windowSize - 1].lapNo,
+      size: windowSize
+    };
   }
 
   // ─── Init ──────────────────────────────────
@@ -504,10 +530,16 @@
     const maxLaps = Math.max(...top5.map((d) => getLapTimesSeconds(d, sessionKey).length), 0);
     if (!top5.length || !maxLaps) return;
     const lapLabels = Array.from({ length: maxLaps }, (_, i) => `Lap ${i + 1}`);
+    const leader = top5[0];
+    const attackWindow = leader ? getAttackWindow(leader, sessionKey, 5) : null;
 
     const datasets = top5.map((d, i) => {
       const laps = getLapTimesSeconds(d, sessionKey);
       const padded = Array.from({ length: maxLaps }, (_, idx) => laps[idx] ?? null);
+      const isLeader = i === 0;
+      const pointRadius = (isLeader && attackWindow)
+        ? padded.map((v, idx) => (v != null && idx >= attackWindow.startLap - 1 && idx <= attackWindow.endLap - 1 ? 6 : 4))
+        : 4;
       return {
       label: d.name.split(" ")[0],
       data: padded,
@@ -515,15 +547,47 @@
       backgroundColor: PALETTE[i] + "22",
       tension: 0.3,
       fill: false,
-      pointRadius: 5,
+      pointRadius,
       pointHoverRadius: 7,
       spanGaps: true
     };
     });
 
+    const attackBandPlugin = {
+      id: "attackWindowBand",
+      beforeDatasetsDraw(chart) {
+        if (!attackWindow) return;
+        const { ctx, chartArea, scales } = chart;
+        if (!chartArea || !scales?.x) return;
+        const x = scales.x;
+        const startIndex = Math.max(0, attackWindow.startLap - 1);
+        const endIndex = Math.min(lapLabels.length - 1, attackWindow.endLap - 1);
+        if (startIndex > endIndex) return;
+
+        const left = x.getPixelForValue(startIndex);
+        const right = x.getPixelForValue(endIndex);
+        const bandLeft = Math.min(left, right) - 8;
+        const bandRight = Math.max(left, right) + 8;
+
+        ctx.save();
+        ctx.fillStyle = "rgba(232, 184, 75, 0.10)";
+        ctx.strokeStyle = "rgba(232, 184, 75, 0.45)";
+        ctx.lineWidth = 1;
+        ctx.fillRect(bandLeft, chartArea.top, bandRight - bandLeft, chartArea.bottom - chartArea.top);
+        ctx.strokeRect(bandLeft, chartArea.top, bandRight - bandLeft, chartArea.bottom - chartArea.top);
+        ctx.fillStyle = "#e8b84b";
+        ctx.font = "11px Inter, Segoe UI, sans-serif";
+        ctx.textBaseline = "top";
+        const label = `${leader.name.split(" ")[0]} attack window (L${attackWindow.startLap}-L${attackWindow.endLap})`;
+        ctx.fillText(label, bandLeft + 6, chartArea.top + 6);
+        ctx.restore();
+      }
+    };
+
     charts["session-comparison"] = new Chart(ctx, {
       type: "line",
       data: { labels: lapLabels, datasets },
+      plugins: [attackBandPlugin],
       options: {
         responsive: true,
         maintainAspectRatio: true,
@@ -532,7 +596,13 @@
           legend: { labels: { color: "#8892a4", padding: 12, font: { size: 11 } } },
           tooltip: {
             callbacks: {
-              label: (ctx) => ` ${ctx.dataset.label}: ${formatTime(ctx.parsed.y)}`
+              label: (ctx) => ` ${ctx.dataset.label}: ${formatTime(ctx.parsed.y)}`,
+              afterBody: (items) => {
+                if (!attackWindow || !items || !items.length) return "";
+                const index = items[0].dataIndex;
+                const inWindow = index >= attackWindow.startLap - 1 && index <= attackWindow.endLap - 1;
+                return inWindow ? `Attack window: leader L${attackWindow.startLap}-L${attackWindow.endLap}` : "";
+              }
             }
           }
         },
@@ -1168,17 +1238,20 @@
       const laps = getLapTimesSeconds(dB, sessionKey);
       return laps.length ? laps.reduce((s, v) => s + v, 0) / laps.length : null;
     })();
+    const attackA = getAttackWindow(dA, sessionKey, 5);
+    const attackB = getAttackWindow(dB, sessionKey, 5);
 
     const stats = [
       { label: `${sessionLabel} Best Lap`, a: parseTime(dA.sessions[sessionKey]?.bestLap), b: parseTime(dB.sessions[sessionKey]?.bestLap), format: formatTime, lowerBetter: true },
       { label: `${sessionLabel} Position`, a: dA.sessions[sessionKey]?.pos || dA.overallPos, b: dB.sessions[sessionKey]?.pos || dB.overallPos, format: (v) => "P" + v, lowerBetter: true },
       { label: `${sessionLabel} Laps`, a: dA.sessions[sessionKey]?.laps, b: dB.sessions[sessionKey]?.laps, format: (v) => v + " laps", lowerBetter: false },
       { label: `${sessionLabel} Avg Lap`, a: avgA, b: avgB, format: formatTime, lowerBetter: true },
+      { label: `${sessionLabel} Best 5-Lap Avg`, a: attackA?.avg ?? null, b: attackB?.avg ?? null, format: formatTime, lowerBetter: true },
       { label: "Total Points", a: dA.points, b: dB.points, format: (v) => v + " pts", lowerBetter: false },
       { label: "Engine Capacity", a: dA.capacity, b: dB.capacity, format: (v) => v.toLocaleString() + "cc", lowerBetter: false }
     ];
 
-    el.innerHTML = stats.map(({ label, a, b, format, lowerBetter }) => {
+    const rowsHtml = stats.map(({ label, a, b, format, lowerBetter }) => {
       if (a == null || b == null) return "";
       const maxVal = Math.max(a, b);
       const minVal = Math.min(a, b);
@@ -1211,6 +1284,12 @@
         </div>
       `;
     }).join("");
+
+    const attackDetail = (attackA && attackB)
+      ? `<div style="margin-top:10px;font-size:12px;color:var(--text-secondary)">Attack window (best rolling 5): Driver A L${attackA.startLap}-L${attackA.endLap}, Driver B L${attackB.startLap}-L${attackB.endLap}</div>`
+      : "";
+
+    el.innerHTML = rowsHtml + attackDetail;
   }
 
   function renderCompareLapChart(dA, dB) {
@@ -1538,12 +1617,13 @@
     // Summary stats
     const sessionKey = getPrimarySessionKey();
     const sessionLabel = getSessionLabel(sessionKey);
+    const attackWindow = getAttackWindow(d, sessionKey, 5);
     document.getElementById("modal-summary").innerHTML = `
       <div class="grid-4" style="gap:12px;margin-bottom:20px">
         ${[
           { icon: "🏆", label: "Overall Pos", value: "P" + d.overallPos, color: "#e8b84b" },
           { icon: "⚡", label: `${sessionLabel} Best Lap`, value: d.sessions[sessionKey]?.bestLap || "—", color: cls?.color || "#888" },
-          { icon: "🔢", label: "Total Laps", value: d.totalLaps, color: "#4facfe" },
+          { icon: "🎯", label: "Best 5-Lap Avg", value: attackWindow ? formatTime(attackWindow.avg) : "—", color: "#4facfe" },
           { icon: "🏅", label: "Points", value: d.points, color: "#26de81" }
         ].map(({ icon, label, value, color }) => `
           <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;text-align:center;border:1px solid var(--border-color)">
@@ -1556,6 +1636,8 @@
       <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--text-secondary)">
         <span>🚗 ${d.vehicle} (${d.year})</span>
         <span>🏎️ ${d.capacity.toLocaleString()}cc</span>
+        <span>🔢 ${d.totalLaps} total laps</span>
+        ${attackWindow ? `<span>🎯 Attack window L${attackWindow.startLap}-L${attackWindow.endLap}</span>` : ""}
         <span>🏁 ${d.club}</span>
         <span style="color:${cls?.color || '#888'}">📋 ${d.class} — ${cls?.name || ""}</span>
       </div>

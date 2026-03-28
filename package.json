@@ -1,5 +1,5 @@
 {
-  "name": "visualiseraceresults-nataoft",
+  "name": "visualiseraceresults-natsoft",
   "version": "1.0.0",
   "description": "",
   "main": "public/assets/js/app.js",
@@ -8,15 +8,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/woodmaniac13/VisualiseRaceResults-nataoft.git"
+    "url": "git+https://github.com/woodmaniac13/VisualiseRaceResults-natsoft.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/woodmaniac13/VisualiseRaceResults-nataoft/issues"
+    "url": "https://github.com/woodmaniac13/VisualiseRaceResults-natsoft/issues"
   },
-  "homepage": "https://github.com/woodmaniac13/VisualiseRaceResults-nataoft#readme",
+  "homepage": "https://github.com/woodmaniac13/VisualiseRaceResults-natsoft#readme",
   "dependencies": {}
 }
