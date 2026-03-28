@@ -2,7 +2,7 @@
   "name": "visualiseraceresults-nataoft",
   "version": "1.0.0",
   "description": "",
-  "main": "app.js",
+  "main": "public/assets/js/app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -18,7 +18,5 @@
     "url": "https://github.com/woodmaniac13/VisualiseRaceResults-nataoft/issues"
   },
   "homepage": "https://github.com/woodmaniac13/VisualiseRaceResults-nataoft#readme",
-  "dependencies": {
-    "chart.js": "^4.5.1"
-  }
+  "dependencies": {}
 }
