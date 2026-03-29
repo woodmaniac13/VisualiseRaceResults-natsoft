@@ -1533,6 +1533,19 @@
 
     const sessionKey = getPrimarySessionKey();
     const isCompact = window.matchMedia("(max-width: 680px)").matches;
+    const axisTickFontSize = isCompact ? 9 : 10;
+    const axisTitleFontSize = isCompact ? 10 : 11;
+    const formatAxisTime = (seconds, includeSign = false) => {
+      if (!Number.isFinite(seconds)) return "";
+      const sign = seconds < 0 ? "-" : includeSign ? "+" : "";
+      const abs = Math.abs(seconds);
+      if (abs >= 60) {
+        const minutes = Math.floor(abs / 60);
+        const secs = abs - (minutes * 60);
+        return `${sign}${minutes}:${secs.toFixed(1).padStart(4, "0")}`;
+      }
+      return `${sign}${abs.toFixed(1)}s`;
+    };
     const lapTimesA = (dA.sessions[sessionKey]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapTimesB = (dB.sessions[sessionKey]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapCount = Math.min(lapTimesA.length, lapTimesB.length);
@@ -1739,7 +1752,8 @@
         ticks: {
           color: "#8892a4",
           autoSkip: true,
-          maxTicksLimit: isCompact ? 8 : 15
+          maxTicksLimit: isCompact ? 8 : 15,
+          font: { size: axisTickFontSize }
         }
       },
       yAdv: {
@@ -1747,9 +1761,15 @@
         grid: { color: "#252d3d" },
         ticks: {
           color: "#8892a4",
-          callback: (v) => `${v >= 0 ? "+" : "-"}${formatTime(Math.abs(v))}`
+          font: { size: axisTickFontSize },
+          callback: (v) => formatAxisTime(v, true)
         },
-        title: { display: true, text: "Driver A Advantage", color: "#8892a4" }
+        title: {
+          display: true,
+          text: "Driver A Advantage",
+          color: "#8892a4",
+          font: { size: axisTitleFontSize }
+        }
       }
     };
 
@@ -1759,9 +1779,15 @@
         grid: { drawOnChartArea: false },
         ticks: {
           color: "#8892a4",
-          callback: (v) => formatTime(v)
+          font: { size: axisTickFontSize },
+          callback: (v) => formatAxisTime(v)
         },
-        title: { display: true, text: "Cumulative Time", color: "#8892a4" }
+        title: {
+          display: true,
+          text: "Cumulative Time",
+          color: "#8892a4",
+          font: { size: axisTitleFontSize }
+        }
       };
     }
 
