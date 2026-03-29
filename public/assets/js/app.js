@@ -216,9 +216,9 @@
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
     document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
     const panel = document.getElementById("panel-" + id);
-    const tab = document.querySelector(`[data-panel="${id}"]`);
+    const tabs = document.querySelectorAll(`[data-panel="${id}"]`);
     if (panel) panel.classList.add("active");
-    if (tab) tab.classList.add("active");
+    tabs.forEach((tab) => tab.classList.add("active"));
 
     // Trigger chart resize for visibility changes
     setTimeout(() => {
