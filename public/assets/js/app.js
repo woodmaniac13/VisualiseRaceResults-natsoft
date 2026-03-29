@@ -695,7 +695,7 @@
     const top5 = getTopDriversBySession(5, sessionKey);
     const maxLaps = Math.max(...top5.map((d) => getLapTimesSeconds(d, sessionKey).length), 0);
     if (!top5.length || !maxLaps) return;
-    const lapLabels = Array.from({ length: maxLaps }, (_, i) => `Lap ${i + 1}`);
+    const lapLabels = Array.from({ length: maxLaps }, (_, i) => isCompact ? `L${i + 1}` : `Lap ${i + 1}`);
     const leader = top5[0];
     const attackWindow = leader ? getAttackWindow(leader, sessionKey, 5) : null;
 
@@ -1495,7 +1495,7 @@
     const lapTimesA = (dA.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapTimesB = (dB.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const maxLen = Math.max(lapTimesA.length, lapTimesB.length);
-    const labels = Array.from({ length: maxLen }, (_, i) => `Lap ${i + 1}`);
+    const labels = Array.from({ length: maxLen }, (_, i) => isCompact ? `L${i + 1}` : `Lap ${i + 1}`);
 
     charts["compare-laps"] = new Chart(ctx, {
       type: "line",
@@ -1579,7 +1579,7 @@
     const lapTimesA = (dA.sessions[sessionKey]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapTimesB = (dB.sessions[sessionKey]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapCount = Math.min(lapTimesA.length, lapTimesB.length);
-    const labels = Array.from({ length: lapCount }, (_, i) => `Lap ${i + 1}`);
+    const labels = Array.from({ length: lapCount }, (_, i) => isCompact ? `L${i + 1}` : `Lap ${i + 1}`);
 
     if (!lapCount) {
       if (summaryEl) summaryEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">Not enough overlapping laps to compare in this session.</div>`;
@@ -1924,7 +1924,8 @@
     // Reference lap time: fastest driver's best lap (used for fallback when a lap time is null)
     const refLapTime = parseTime(top4[0]?.sessions.race1?.bestLap) || 65;
 
-    const labels = Array.from({ length: maxLaps }, (_, i) => `Lap ${i + 1}`);
+    const isCompact = window.matchMedia("(max-width: 680px)").matches;
+    const labels = Array.from({ length: maxLaps }, (_, i) => isCompact ? `L${i + 1}` : `Lap ${i + 1}`);
 
     const datasets = top4.map((d, i) => {
       let cumulative = 0;
