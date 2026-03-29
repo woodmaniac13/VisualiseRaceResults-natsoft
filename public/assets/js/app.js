@@ -1223,20 +1223,37 @@
   function refreshComparison() {
     const dA = RACE_DATA.drivers.find((d) => d.id === compareDriverA) || RACE_DATA.drivers[0];
     const dB = RACE_DATA.drivers.find((d) => d.id === compareDriverB) || RACE_DATA.drivers[1];
+    const { colorA, colorB } = getCompareDriverColors(dA, dB);
 
-    renderCompareHeaders(dA, dB);
-    renderCompareStats(dA, dB);
-    renderCompareLapChart(dA, dB);
+    renderCompareHeaders(dA, dB, colorA, colorB);
+    renderCompareStats(dA, dB, colorA, colorB);
+    renderCompareLapChart(dA, dB, colorA, colorB);
   }
 
-  function renderCompareHeaders(dA, dB) {
-    const renderHeader = (id, d) => {
+  function getCompareDriverColors(dA, dB) {
+    const fallbackA = PALETTE[0] || "#ff6b35";
+    const fallbackB = PALETTE[2] || "#4facfe";
+    const normalize = (c) => String(c || "").trim().toLowerCase();
+
+    const colorA = RACE_DATA.classes[dA.class]?.color || fallbackA;
+    let colorB = RACE_DATA.classes[dB.class]?.color || fallbackB;
+
+    // Ensure the two compared drivers never render with the same color.
+    if (normalize(colorA) === normalize(colorB)) {
+      colorB = PALETTE.find((c) => normalize(c) !== normalize(colorA)) || fallbackB;
+    }
+
+    return { colorA, colorB };
+  }
+
+  function renderCompareHeaders(dA, dB, colorA, colorB) {
+    const renderHeader = (id, d, accent) => {
       const el = document.getElementById(id);
       if (!el) return;
       const cls = RACE_DATA.classes[d.class];
       el.innerHTML = `
         <div class="compare-driver-header">
-          <div class="driver-avatar" style="background:${cls?.color || "#888"}22;color:${cls?.color || "#888"};border:2px solid ${cls?.color || "#888"}44">
+          <div class="driver-avatar" style="background:${accent}22;color:${accent};border:2px solid ${accent}55">
             ${d.car}
           </div>
           <div>
@@ -1245,22 +1262,19 @@
             <div style="color:var(--text-muted);font-size:11px">${d.club}</div>
           </div>
           <div style="margin-left:auto;text-align:right">
-            <div style="font-size:24px;font-weight:700;color:var(--accent-primary)">${d.sessions.race1?.bestLap || "—"}</div>
+            <div style="font-size:24px;font-weight:700;color:${accent}">${d.sessions.race1?.bestLap || "—"}</div>
             <div style="font-size:11px;color:var(--text-muted)">P${d.sessions.race1?.pos || d.overallPos} • ${d.sessions.race1?.laps || d.totalLaps} laps</div>
           </div>
         </div>
       `;
     };
-    renderHeader("compare-header-a", dA);
-    renderHeader("compare-header-b", dB);
+    renderHeader("compare-header-a", dA, colorA);
+    renderHeader("compare-header-b", dB, colorB);
   }
 
-  function renderCompareStats(dA, dB) {
+  function renderCompareStats(dA, dB, colorA, colorB) {
     const el = document.getElementById("compare-stats");
     if (!el) return;
-
-    const colorA = RACE_DATA.classes[dA.class]?.color || PALETTE[0];
-    const colorB = RACE_DATA.classes[dB.class]?.color || PALETTE[1];
 
     const sessionKey = getPrimarySessionKey();
     const sessionLabel = getSessionLabel(sessionKey);
@@ -1325,13 +1339,10 @@
     el.innerHTML = rowsHtml + attackDetail;
   }
 
-  function renderCompareLapChart(dA, dB) {
+  function renderCompareLapChart(dA, dB, colorA, colorB) {
     const ctx = document.getElementById("chart-compare-laps");
     if (!ctx) return;
     if (charts["compare-laps"]) charts["compare-laps"].destroy();
-
-    const colorA = RACE_DATA.classes[dA.class]?.color || PALETTE[0];
-    const colorB = RACE_DATA.classes[dB.class]?.color || PALETTE[1];
 
     const lapTimesA = (dA.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapTimesB = (dB.sessions.race1?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
