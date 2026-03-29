@@ -346,12 +346,14 @@
     </div>
 
     <div class="card section-gap">
-      <div class="card-title"><span class="icon"></span> Head-to-Head  Cumulative Race Progress</div>
+      <div class="card-title"><span class="icon"></span> Head-to-Head  Race Advantage Timeline</div>
+      <div id="compare-progress-summary" class="compare-progress-summary"></div>
       <div class="chart-container-tall">
         <canvas id="chart-compare-progress"></canvas>
       </div>
+      <div id="compare-lead-strip" class="compare-lead-strip"></div>
       <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">
-        Lower cumulative time means that driver is ahead. Gap (A-B) below zero means Driver A is in front.
+        Positive values mean Driver A is ahead. Negative values mean Driver B is ahead.
       </div>
     </div>
   </section>

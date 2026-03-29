@@ -1526,14 +1526,22 @@
 
   function renderCompareProgressChart(dA, dB, colorA, colorB) {
     const ctx = document.getElementById("chart-compare-progress");
+    const summaryEl = document.getElementById("compare-progress-summary");
+    const stripEl = document.getElementById("compare-lead-strip");
     if (!ctx) return;
     if (charts["compare-progress"]) charts["compare-progress"].destroy();
 
     const sessionKey = getPrimarySessionKey();
     const lapTimesA = (dA.sessions[sessionKey]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
     const lapTimesB = (dB.sessions[sessionKey]?.lapTimes || []).slice(1).map(parseTime).filter(Boolean);
-    const maxLen = Math.max(lapTimesA.length, lapTimesB.length);
-    const labels = Array.from({ length: maxLen }, (_, i) => `Lap ${i + 1}`);
+    const lapCount = Math.min(lapTimesA.length, lapTimesB.length);
+    const labels = Array.from({ length: lapCount }, (_, i) => `Lap ${i + 1}`);
+
+    if (!lapCount) {
+      if (summaryEl) summaryEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">Not enough overlapping laps to compare in this session.</div>`;
+      if (stripEl) stripEl.innerHTML = "";
+      return;
+    }
 
     const cumulative = (laps) => {
       let total = 0;
@@ -1543,12 +1551,73 @@
       });
     };
 
-    const cumA = cumulative(lapTimesA);
-    const cumB = cumulative(lapTimesB);
-    const gapAB = labels.map((_, i) => {
-      if (i >= cumA.length || i >= cumB.length) return null;
-      return cumA[i] - cumB[i];
+    const cumA = cumulative(lapTimesA.slice(0, lapCount));
+    const cumB = cumulative(lapTimesB.slice(0, lapCount));
+
+    // Positive values mean Driver A is ahead. Negative values mean Driver B is ahead.
+    const advantageA = labels.map((_, i) => cumB[i] - cumA[i]);
+    const positiveAdv = advantageA.map((v) => (v >= 0 ? v : null));
+    const negativeAdv = advantageA.map((v) => (v <= 0 ? v : null));
+    const zeroLine = labels.map(() => 0);
+
+    const epsilon = 0.001;
+    let lapsLedA = 0;
+    let lapsLedB = 0;
+    let leadChanges = 0;
+    let lastLeader = null;
+    let largestLeadA = 0;
+    let largestLeadB = 0;
+
+    advantageA.forEach((v) => {
+      let leader = "tie";
+      if (v > epsilon) {
+        leader = "A";
+        lapsLedA++;
+        if (v > largestLeadA) largestLeadA = v;
+      } else if (v < -epsilon) {
+        leader = "B";
+        lapsLedB++;
+        if (Math.abs(v) > largestLeadB) largestLeadB = Math.abs(v);
+      }
+
+      if ((leader === "A" || leader === "B") && lastLeader && leader !== lastLeader) {
+        leadChanges++;
+      }
+      if (leader === "A" || leader === "B") lastLeader = leader;
     });
+
+    const finalAdv = advantageA[advantageA.length - 1] || 0;
+    const finalLeader = finalAdv > epsilon ? dA.name.split(" ")[0] : finalAdv < -epsilon ? dB.name.split(" ")[0] : "Tie";
+
+    if (summaryEl) {
+      summaryEl.innerHTML = [
+        { label: "Final Margin", value: `${finalLeader} ${finalLeader === "Tie" ? "" : `by ${formatTime(Math.abs(finalAdv))}`}`.trim() },
+        { label: `${dA.name.split(" ")[0]} Laps Ahead`, value: String(lapsLedA) },
+        { label: `${dB.name.split(" ")[0]} Laps Ahead`, value: String(lapsLedB) },
+        { label: "Lead Changes", value: String(leadChanges) },
+        { label: `${dA.name.split(" ")[0]} Max Lead`, value: formatTime(largestLeadA) },
+        { label: `${dB.name.split(" ")[0]} Max Lead`, value: formatTime(largestLeadB) }
+      ].map((chip) => `
+        <div class="compare-progress-chip">
+          <div class="compare-progress-chip-value">${chip.value}</div>
+          <div class="compare-progress-chip-label">${chip.label}</div>
+        </div>
+      `).join("");
+    }
+
+    if (stripEl) {
+      stripEl.innerHTML = labels.map((label, i) => {
+        const v = advantageA[i];
+        const leader = v > epsilon ? "A" : v < -epsilon ? "B" : "Tie";
+        const bg = leader === "A" ? `${colorA}cc` : leader === "B" ? `${colorB}cc` : "#7f8ca555";
+        const tip = leader === "A"
+          ? `${label}: ${dA.name} ahead by ${formatTime(Math.abs(v))}`
+          : leader === "B"
+            ? `${label}: ${dB.name} ahead by ${formatTime(Math.abs(v))}`
+            : `${label}: level`;
+        return `<span class="compare-lead-segment" style="background:${bg}" title="${tip}"></span>`;
+      }).join("");
+    }
 
     charts["compare-progress"] = new Chart(ctx, {
       type: "line",
@@ -1556,38 +1625,71 @@
         labels,
         datasets: [
           {
-            label: `${dA.name.split(" ")[0]} cumulative`,
-            data: labels.map((_, i) => (i < cumA.length ? cumA[i] : null)),
-            yAxisID: "y",
+            label: `${dA.name.split(" ")[0]} advantage`,
+            data: positiveAdv,
+            yAxisID: "yAdv",
             borderColor: colorA,
-            backgroundColor: colorA + "1f",
-            tension: 0.28,
+            backgroundColor: colorA + "2a",
+            tension: 0.2,
+            fill: "origin",
             borderWidth: 2.5,
-            pointRadius: 2,
-            pointHoverRadius: 5
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            spanGaps: true
+          },
+          {
+            label: `${dB.name.split(" ")[0]} advantage`,
+            data: negativeAdv,
+            yAxisID: "yAdv",
+            borderColor: colorB,
+            backgroundColor: colorB + "2a",
+            tension: 0.2,
+            fill: "origin",
+            borderWidth: 2.5,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            spanGaps: true
+          },
+          {
+            label: "Driver A Advantage",
+            data: advantageA,
+            yAxisID: "yAdv",
+            borderColor: "#c2cfdf",
+            backgroundColor: "transparent",
+            borderDash: [5, 4],
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 1.5,
+            pointHoverRadius: 4
+          },
+          {
+            label: "Level",
+            data: zeroLine,
+            yAxisID: "yAdv",
+            borderColor: "#7f8ca5",
+            borderWidth: 2,
+            pointRadius: 0,
+            borderDash: [2, 2]
+          },
+          {
+            label: `${dA.name.split(" ")[0]} cumulative`,
+            data: cumA,
+            yAxisID: "yCum",
+            borderColor: colorA + "66",
+            backgroundColor: "transparent",
+            tension: 0.2,
+            borderWidth: 1.5,
+            pointRadius: 0
           },
           {
             label: `${dB.name.split(" ")[0]} cumulative`,
-            data: labels.map((_, i) => (i < cumB.length ? cumB[i] : null)),
-            yAxisID: "y",
-            borderColor: colorB,
-            backgroundColor: colorB + "1f",
-            tension: 0.28,
-            borderWidth: 2.5,
-            pointRadius: 2,
-            pointHoverRadius: 5
-          },
-          {
-            label: "Gap (A-B)",
-            data: gapAB,
-            yAxisID: "yGap",
-            borderColor: "#9fb0c8",
-            backgroundColor: "#9fb0c81a",
-            borderDash: [6, 4],
+            data: cumB,
+            yAxisID: "yCum",
+            borderColor: colorB + "66",
+            backgroundColor: "transparent",
             tension: 0.2,
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 4
+            borderWidth: 1.5,
+            pointRadius: 0
           }
         ]
       },
@@ -1596,40 +1698,48 @@
         maintainAspectRatio: true,
         interaction: { mode: "index", intersect: false },
         plugins: {
-          legend: { labels: { color: "#8892a4", padding: 12, font: { size: 12 } } },
+          legend: {
+            labels: {
+              color: "#8892a4",
+              padding: 12,
+              font: { size: 12 },
+              filter: (item) => !["Level"].includes(item.text)
+            }
+          },
           tooltip: {
             callbacks: {
               label: (ctx) => {
-                if (ctx.dataset.yAxisID === "y") {
+                if (ctx.dataset.yAxisID === "yCum") {
                   return ` ${ctx.dataset.label}: ${formatTime(ctx.parsed.y)}`;
                 }
-                const gap = ctx.parsed.y;
-                if (!Number.isFinite(gap)) return " Gap: -";
-                const leader = gap < 0 ? dA.name.split(" ")[0] : gap > 0 ? dB.name.split(" ")[0] : "Level";
-                return ` Gap: ${gap < 0 ? "-" : "+"}${formatTime(Math.abs(gap))} (${leader} ahead)`;
+                if (ctx.dataset.label === "Level") return null;
+                const adv = ctx.parsed.y;
+                if (!Number.isFinite(adv)) return " Advantage: -";
+                const leader = adv > epsilon ? dA.name.split(" ")[0] : adv < -epsilon ? dB.name.split(" ")[0] : "Level";
+                return ` Advantage: ${adv >= 0 ? "+" : "-"}${formatTime(Math.abs(adv))} (${leader} ahead)`;
               }
             }
           }
         },
         scales: {
           x: { grid: { color: "#252d3d" }, ticks: { color: "#8892a4" } },
-          y: {
+          yAdv: {
             position: "left",
             grid: { color: "#252d3d" },
-            ticks: { color: "#8892a4", callback: (v) => formatTime(v) },
-            title: { display: true, text: "Cumulative Time", color: "#8892a4" }
+            ticks: {
+              color: "#8892a4",
+              callback: (v) => `${v >= 0 ? "+" : "-"}${formatTime(Math.abs(v))}`
+            },
+            title: { display: true, text: "Driver A Advantage", color: "#8892a4" }
           },
-          yGap: {
+          yCum: {
             position: "right",
             grid: { drawOnChartArea: false },
             ticks: {
               color: "#8892a4",
-              callback: (v) => {
-                const abs = Math.abs(v);
-                return `${v < 0 ? "-" : "+"}${formatTime(abs)}`;
-              }
+              callback: (v) => formatTime(v)
             },
-            title: { display: true, text: "Gap (A-B)", color: "#8892a4" }
+            title: { display: true, text: "Cumulative Time", color: "#8892a4" }
           }
         }
       }
