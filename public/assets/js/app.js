@@ -663,7 +663,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { position: "right", labels: { color: "#8892a4", padding: 12, font: { size: 12 } } },
           tooltip: {
@@ -756,7 +756,7 @@
       plugins: [attackBandPlugin],
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { labels: { color: "#8892a4", padding: 12, font: { size: 11 } } },
@@ -1051,7 +1051,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: { title: (ctx) => `~${ctx[0].label}`, label: (ctx) => `${ctx.parsed.y} laps` } }
@@ -1115,7 +1115,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: "#8892a4", padding: 10, font: { size: 11 } } }
         },
@@ -1172,7 +1172,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: "#8892a4", padding: 8, font: { size: 11 } } },
           tooltip: {
@@ -1263,7 +1263,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         indexAxis: "y",
         plugins: {
           legend: { display: false },
@@ -1302,7 +1302,7 @@
       data: { datasets },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1528,7 +1528,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { labels: { color: "#8892a4", padding: 12, font: { size: 12 } } },
@@ -1829,7 +1829,8 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: !isCompact,
+        // Keep chart constrained to container height on all breakpoints.
+        maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: {
@@ -1957,7 +1958,7 @@
       data: { labels, datasets: gapDatasets },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { labels: { color: "#8892a4", padding: 12, font: { size: 12 } } },

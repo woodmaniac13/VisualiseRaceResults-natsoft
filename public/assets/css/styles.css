@@ -565,18 +565,37 @@ body::before {
 .chart-container {
   position: relative;
   width: 100%;
+  height: 320px;
+  overflow: hidden;
 }
 
 .chart-container canvas {
-  max-height: 320px;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chart-container-tall {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  overflow: hidden;
 }
 
 .chart-container-tall canvas {
-  max-height: 400px;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chart-container-full {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  overflow: hidden;
 }
 
 .chart-container-full canvas {
-  max-height: 500px;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* ===== Driver Card ===== */
@@ -958,9 +977,11 @@ body::before {
 
 .chart-container-compare-progress {
   height: 340px;
+  overflow: hidden;
 }
 
 .chart-container-compare-progress canvas {
+  height: 100% !important;
   max-height: none;
 }
 
@@ -1308,6 +1329,9 @@ body::before {
 
 @media (max-width: 680px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .chart-container { height: 260px; }
+  .chart-container-tall { height: 300px; }
+  .chart-container-full { height: 340px; }
   .nav-tabs { display: none; }
   .mobile-menu-btn { display: inline-flex; }
   .event-hero::after { display: none; }
